@@ -28,6 +28,7 @@ def build_parser():
     s.add_argument("--author")
     s.add_argument("--comments", action="store_true", help="search comment bodies instead of posts")
     s.add_argument("--title-only", action="store_true")
+    s.add_argument("--local", action="store_true", help="Arctic: page the listing and match words locally (for common words)")
     s.add_argument("--scan", type=int, default=500, help="Arctic: max matches to scan before ranking")
     _common(s)
     t = r.add_parser("thread", help="post + top comments for a URL / id")
@@ -70,7 +71,8 @@ def run(a) -> list[dict]:
             if not (a.query or a.sub or a.author):
                 raise ValueError("give a QUERY, --sub or --author")
             return reddit.pick(a.backend)(reddit.arctic_search, reddit.official_search, a.query, a.sub, a.author,
-                                          a.since, a.until, k, a.top, a.sort, a.scan, a.title_only)
+                                          a.since, a.until, k, a.top, a.sort, a.scan, a.title_only,
+                                          a.local)
         case "reddit", "thread":
             return reddit.pick(a.backend)(reddit.arctic_thread, reddit.official_thread, a.ref, a.top, a.depth)
         case "youtube", "search":

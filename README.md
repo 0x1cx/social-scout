@@ -24,7 +24,7 @@ uv run --project "path/to/social-scout" social-scout reddit search "boring" --su
 
 | Command | What it does |
 |---|---|
-| `reddit search [QUERY] --sub S [--author A] [--since 2025-06] [--until 2026-01] [--top 50] [--sort top\|new] [--comments] [--title-only]` | Posts (or comment bodies with `--comments`) ranked by score |
+| `reddit search [QUERY] --sub S [--author A] [--since 2025-06] [--until 2026-01] [--top 50] [--sort top\|new] [--comments] [--title-only] [--local] [--scan 500]` | Posts (or comment bodies with `--comments`) ranked by score |
 | `reddit thread <url\|id> [--top 50] [--depth 2]` | Post + top-scored comments with replies |
 | `youtube search QUERY [--top 20] [--sort new]` | Videos (score = likes, text starts with view count) |
 | `youtube video <url>` | One video's metadata |
@@ -42,7 +42,7 @@ Item shape (every source): `source, kind (post|comment|video), id, title, author
 
 | Source | Route | Status / limits |
 |---|---|---|
-| Reddit (default) | [Arctic Shift](https://github.com/ArthurHeitmann/arctic_shift) archive API, no auth | Works. Text search needs `--sub` or `--author`. Huge subs (r/roblox) time out on text search even for a 2-week window: search the game's own sub, or list r/roblox without a query plus `--since`. No server-side score sort, so the tool scans up to `--scan` (500) matches and ranks locally. Scores are archive snapshots and can lag live Reddit. Too many requests returns HTTP 422 "slow down": the tool waits 1.5 s between calls and retries with backoff. |
+| Reddit (default) | [Arctic Shift](https://github.com/ArthurHeitmann/arctic_shift) archive API, no auth | Works. Text search needs `--sub` or `--author`. Huge subs (r/roblox) time out on text search even for a 2-week window: search the game's own sub, or list r/roblox without a query plus `--since`. No server-side score sort, so the tool scans up to `--scan` (500) matches and ranks locally. Scores are archive snapshots and can lag live Reddit. Common words ("save", "update", "shop") make the text search time out server-side (HTTP 422 "Timeout. Maybe slow down a bit", the same message as its per-minute budget): the tool then falls back to paging the plain listing and matching words locally (`--local` forces it). The plain listing is cheap and cached, so after one full-sub pass (`--scan 40000`, a few minutes for ~12k posts) every keyword search on the same `--since` is instant. The tool waits 1.5 s between calls and honours `x-ratelimit-reset` on retries. A capped scan prints a warning with the date it reached. |
 | Reddit (optional) | Official API, application-only OAuth (`--backend official`, or `auto` falls back to it) | Not tested live (no app yet). Needs a Reddit "script" app; see below. Live scores, but no date filters or comment search. |
 | Reddit | PullPush (`api.pullpush.io`) | Down on 2026-11-13 (HTTP 526). Not implemented. |
 | Reddit | `reddit.com/*.json` logged out | HTTP 403. Not used. |

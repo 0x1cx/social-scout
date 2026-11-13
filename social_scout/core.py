@@ -75,9 +75,13 @@ def fetch_json(url: str, params: dict | None = None, headers: dict | None = None
             text = e.read().decode("utf-8", "replace")[:300]
             retryable = e.code in (429, 500, 502, 503, 504) or (e.code == 422 and "slow down" in text)
             if retryable and attempt < retries:
-                time.sleep(5 * (attempt + 1) ** 2)
+                # Arctic Shift sends x-ratelimit-reset (seconds to the next budget window); honour it
+                reset = (e.headers or {}).get("x-ratelimit-reset") or (e.headers or {}).get("retry-after")
+                time.sleep(min(int(reset) + 2, 60) if str(reset or "").isdigit() else 5 * (attempt + 1) ** 2)
                 continue
-            raise FetchError(f"HTTP {e.code} from {host}: {text.strip()}") from None
+            hint = " (Arctic Shift query budget: wait a minute, narrow --since/--until, or use rarer words)" \
+                if "slow down" in text else ""
+            raise FetchError(f"HTTP {e.code} from {host}: {text.strip()}{hint}") from None
         except (urllib.error.URLError, TimeoutError) as e:
             if attempt < retries:
                 time.sleep(3)

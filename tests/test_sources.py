@@ -114,3 +114,23 @@ def test_dotenv_never_overrides(tmp_path, monkeypatch):
     core.load_dotenv(env)
     import os
     assert os.environ["SS_TEST_A"] == "keep" and os.environ["SS_TEST_B"] == "2"
+
+
+def test_reddit_local_match_on_listing(monkeypatch):
+    rows = [{"id": "a1", "title": "Please add a SAVE feature", "selftext": "", "score": 5, "subreddit": "x", "created_utc": 1},
+            {"id": "a2", "title": "frogs", "selftext": "we need to save runs", "score": 9, "subreddit": "x", "created_utc": 2},
+            {"id": "a3", "title": "unrelated", "selftext": "", "score": 99, "subreddit": "x", "created_utc": 3}]
+    seen = []
+    monkeypatch.setattr(reddit, "_arctic_scan", lambda kind, sub, author, query, *a: seen.append(query) or rows)
+    got = reddit.arctic_search("save", sub="x", local=True)
+    assert [i["id"] for i in got] == ["a2", "a1"] and seen == [None]
+    assert [i["id"] for i in reddit.arctic_search("save", sub="x", local=True, title_only=True)] == ["a1"]
+
+
+def test_reddit_falls_back_to_local_when_text_search_times_out(monkeypatch):
+    def scan(kind, sub, author, query, *a):
+        if query:
+            raise core.FetchError("HTTP 422 slow down")
+        return [{"id": "b1", "title": "save pls", "score": 1, "subreddit": "x", "created_utc": 1}]
+    monkeypatch.setattr(reddit, "_arctic_scan", scan)
+    assert [i["id"] for i in reddit.arctic_search("save", sub="x")] == ["b1"]

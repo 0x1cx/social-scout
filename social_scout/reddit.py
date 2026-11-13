@@ -2,6 +2,7 @@
 import base64
 import os
 import re
+import sys
 
 from .core import FetchError, epoch, fetch_json, iso, item, VERSION
 
@@ -65,11 +66,31 @@ def _rank(items: list[dict], sort: str, top: int) -> list[dict]:
 # ---- Arctic Shift -----------------------------------------------------------
 def arctic_search(query: str | None, sub: str | None = None, author: str | None = None,
                   since: str | None = None, until: str | None = None, kind: str = "posts",
-                  top: int = 25, sort: str = "top", scan: int = 500, title_only: bool = False) -> list[dict]:
+                  top: int = 25, sort: str = "top", scan: int = 500, title_only: bool = False,
+                  local: bool = False) -> list[dict]:
     """Arctic Shift cannot sort by score, so scan up to `scan` matches oldest->newest and rank locally.
-    Full-text search needs --sub or --author; huge subs (r/roblox) time out on text search: narrow dates."""
+    Full-text search needs --sub or --author. Common words time out server-side ("slow down"): then page the
+    plain listing (cheap, cached) and match words locally. local=True forces that."""
     if query and not (sub or author):
         raise ValueError("Arctic Shift text search needs --sub or --author (or use --backend official)")
+    conv = _comment if kind == "comments" else _post
+    if query and not local:
+        try:
+            return _rank([conv(r) for r in _arctic_scan(kind, sub, author, query, since, until, scan, title_only)], sort, top)
+        except FetchError as e:
+            print(f"social-scout: text search failed ({e}); falling back to listing + local match", file=sys.stderr)
+    if query:
+        scan = max(scan, 20000)  # local match scans the raw listing, not matches
+    rows = _arctic_scan(kind, sub, author, None, since, until, scan, title_only)
+    if query:
+        words = [re.compile(r"\b" + re.escape(w), re.I) for w in query.split()]  # word-prefix match: "save" hits "saves", not "unsaved"
+        text = (lambda r: r.get("body") or "") if kind == "comments" else (
+            lambda r: (r.get("title") or "") + ("" if title_only else " " + (r.get("selftext") or "")))
+        rows = [r for r in rows if all(w.search(text(r)) for w in words)]
+    return _rank([conv(r) for r in rows], sort, top)
+
+
+def _arctic_scan(kind, sub, author, query, since, until, scan, title_only) -> list[dict]:
     textkey = "body" if kind == "comments" else ("title" if title_only else "query")
     after, before, rows = epoch(since), epoch(until), []
     while len(rows) < scan:
@@ -83,8 +104,11 @@ def arctic_search(query: str | None, sub: str | None = None, author: str | None 
         if len(data) < 100:
             break
         after = int(data[-1]["created_utc"])  # next page starts after the newest row seen
-    conv = _comment if kind == "comments" else _post
-    return _rank([conv(r) for r in rows], sort, top)
+    else:
+        # shortcut: scans oldest-first, so a capped scan misses later posts; split --since/--until windows instead
+        print(f"social-scout: warning: --scan {scan} reached at {_iso(after)}; later matches not ranked. "
+              "Narrow --since/--until or raise --scan.", file=sys.stderr)
+    return rows
 
 
 def arctic_thread(ref: str, top: int = 50, max_depth: int = 3) -> list[dict]:
@@ -128,7 +152,7 @@ def _official(path: str, params: dict) -> dict | list:
 
 
 def official_search(query, sub=None, author=None, since=None, until=None, kind="posts",
-                    top=25, sort="top", scan=500, title_only=False) -> list[dict]:
+                    top=25, sort="top", scan=500, title_only=False, local=False) -> list[dict]:
     if kind == "comments":
         raise ValueError("official API has no comment search; use --backend arctic")
     q = " ".join(x for x in (f'title:"{query}"' if title_only and query else query,
