@@ -1,0 +1,16 @@
+[project]
+name = "social-scout"
+version = "0.1.0"
+description = "Read-only social media research CLI (Reddit, YouTube, HN, Lemmy, Bluesky, DevForum)"
+requires-python = ">=3.11"
+dependencies = ["yt-dlp"]
+
+[project.scripts]
+social-scout = "social_scout.cli:main"
+
+[dependency-groups]
+dev = ["pytest"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
